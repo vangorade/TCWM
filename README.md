@@ -49,7 +49,7 @@ python generate_dataset.py experiment=my_dataset env.name=ReachRed_0to4Distracto
 
 To train a SAVi model, specify the dataset to be trained on and model parameters such as the number of slots in [`train_autoencoder.yaml`](./configs/train_autoencoder.yaml) and run:
 ```bash
-python train_savi.py experiment=my_savi_model
+python train_autoencoder.py experiment=my_savi_model
 ```
 
 <details>
