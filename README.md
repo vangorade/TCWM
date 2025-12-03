@@ -1,6 +1,13 @@
-# TCWM: Task-Centric World Models
+# TCWM: Temporally Consistent World Models
 
-**Task-Centric World Models (TCWM)** is a model-based reinforcement learning framework that operates on structured latent representations for learning complex manipulation tasks from pixels.
+**Temporally Consistent World Models (TCWM)** is a model-based reinforcement learning framework that focuses on learning structured latent representations with temporal consistency for complex manipulation tasks from pixels.
+
+## Key Features
+
+- **Temporal Consistency**: Maintains consistent object representations across time steps for stable dynamics learning
+- **Object-Centric Representation**: Uses slot-based attention mechanisms to decompose scenes into individual objects
+- **Structured Latent Dynamics**: Learns predictable world models in the latent space for efficient planning
+- **Pixel-to-Action**: Operates directly on raw visual observations without requiring manual feature extraction
 
 ## Installation
 ### Conda
@@ -74,7 +81,7 @@ tensorboard --logdir checkpoints
 
 
 ## Citation
-If you find this work useful, please consider citing the original paper as follows:
+This work extends and builds upon slot-attention based world models. If you find this work useful, please consider citing the original foundational work:
 ```bibtex
 @inproceedings{sold2025mosbach,
   title={SOLD: Slot Object-Centric Latent Dynamics Models for Relational Manipulation Learning from Pixels},
@@ -83,3 +90,5 @@ If you find this work useful, please consider citing the original paper as follo
   year={2025}
 }
 ```
+
+For TCWM-specific contributions, please cite the relevant upcoming publication.
