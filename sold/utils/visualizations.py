@@ -114,6 +114,9 @@ def visualize_reward_prediction(images, reconstructions, rewards, predicted_rewa
 def draw_reward(observation, reward, color = (255, 255, 255)):
     imgs = []
     for i, img in enumerate(observation):
+        # Convert to float32 if needed (BFloat16 not supported by PIL)
+        if img.dtype == torch.bfloat16:
+            img = img.float()
         img = torchvision.transforms.functional.to_pil_image(img)
         draw = ImageDraw.Draw(img)
         draw.text((0.25 * img.width, 0.8 * img.height), f"{reward[i]:.3f}", color)

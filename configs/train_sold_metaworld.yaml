@@ -1,0 +1,29 @@
+# @package _global_
+# Example configuration for training SOLD on MetaWorld environments
+defaults:
+  - train_sold
+  - _self_
+
+experiment: "MetaWorld_PickPlace_"
+
+model:
+  env:
+    _target_: envs.make_env
+    suite: "metaworld"
+    # Supported name formats:
+    # - Single task: "pick-place-v3" or "ML1_pick-place-v3"
+    # - Multi-task train: "ML10-train", "ML45-train", "MT50-train"
+    # - Multi-task test: "ML10-test", "ML45-test", "MT50-test"
+    name: "pick-place-v3"
+    image_size: [ 64, 64 ]
+    max_episode_steps: 200  # MetaWorld tasks typically need more steps
+    action_repeat: 2
+
+  # You may need to adjust these for MetaWorld's different dynamics
+  max_steps: 10_000_000
+  num_seed: 1000  # More random exploration for MetaWorld
+  eval_freq: 50000
+  
+  # MetaWorld has different action/observation spaces, may need tuning
+  imagination_horizon: 15
+  discount_factor: 0.99  # MetaWorld often uses higher discount

@@ -2,7 +2,7 @@ defaults:
   - hydra: default
   - _self_
 
-experiment: "my_dataset"
+experiment: "Robosuite_pickplace_slotcon_data_autoenc"
 save_format: "png"
 
 num_train: 20_000  # Number of episodes in the 'train' split.
@@ -13,9 +13,9 @@ num_workers: 8
 
 env:
   _target_: envs.make_env
-  suite: mof  # Should be "mof", "gym", or "dmcontrol".
-  name: ReachRed_0to4Distractors_Dense-v1
-  image_size: [ 64, 64 ]
+  suite: robosuite   # Should be "mof", "gym", or "dmcontrol".
+  name: PickPlace_birdview
+  image_size: [ 224, 224 ]
   max_episode_steps: 25
   action_repeat: 2
 

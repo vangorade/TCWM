@@ -7,19 +7,19 @@ defaults:
   - _self_
 
 checkpoint: ""
-experiment: "PushOdd_0to2Distractors_slotcon"
+experiment: "Robosuite_pickplace_slotcon"
 seed: 42
 
 model:
   _target_: train_sold.SOLDModule
 
   max_steps: 10_000_000  # Maximum number of environment steps to train for.
-  num_seed: 250  # Start training after 'train_after' random steps.
+  num_seed: 1000  # Start training after 'train_after' random steps (more for complex manipulation).
   update_freq: 25  # Update the models every 'update_freq' steps.
   num_updates: 2  # Number of updates to perform whenever the models are updated.
   eval_freq: 100000  # Evaluate the models every 'eval_freq' steps.
   num_eval_episodes: 5  # Number of episodes to collect during evaluation.
-  batch_size: 16  # Batch size for training.
+  batch_size: 8  # Batch size for training.
   buffer_capacity: 1250000  # Maximum number of time-steps to store in the replay buffer.
   save_replay_buffer: False  # Whether to save the full replay buffer for the latest checkpoint to enable resuming of training.
 
@@ -43,7 +43,7 @@ model:
   start_imagination_from_every: False  # Whether to start imagination from possible frame in the sequences or only a single one.
 
   return_lambda: 0.95  # Lambda used to compute bootstrapped λ-returns.
-  discount_factor: 0.96  # Discount factor used to compute returns.
+  discount_factor: 0.99  # Discount factor used to compute returns (higher for manipulation tasks).
   critic_ema_decay: 0.98  # Exponential moving average decay for the critic target network.
 
   # Slot contrastive loss parameters (from SlotContrast, CVPR 2025)
@@ -56,29 +56,44 @@ model:
 
   env:
     _target_: envs.make_env
-    suite: "mof"  # Should be "mof", "gym", "dmcontrol", or "metaworld".
-    name: PushOdd_2to2Distractors_Dense-v1
+    suite: "robosuite"  # Robosuite manipulation tasks
+    name: PickPlace  # Options: Lift, Stack, PickPlace, NutAssembly, Door, Wipe
     image_size: [ 64, 64 ]
-    max_episode_steps: 100
+    max_episode_steps: 200  # Longer episodes for manipulation tasks
     action_repeat: 2
+
+  # autoencoder:
+  #   _target_: modeling.autoencoder.cnn.autoencoder.Cnn
+  #   encoder:
+  #     _target_: modeling.autoencoder.cnn.CnnEncoder
+  #     num_channels: [32, 64, 128, 128]
+  #     kernel_sizes: [3, 3, 3, 3]
+  #     strides: [2, 2, 2, 2]
+  #   decoder:
+  #     _target_: modeling.autoencoder.cnn.CnnDecoder
+  #     _partial_: true
+  #     image_size: ${...env.image_size}
+  #     num_channels: [128, 128, 64, 32]
+  #     kernel_sizes: [3, 3, 3, 3]
+  #     strides: [2, 2, 2, 2]
 
   autoencoder:
     _target_: train_autoencoder.load_autoencoder
-    checkpoint_path: ../checkpoints/autoencoder/savi/push_red/latest.ckpt
+    checkpoint_path: "/home/user/research/sold/experiments/train_autoencoder_robosuite/robosuite_pickplace_savi/2025-11-16_20-16-36/logs/version_0/checkpoints/train_autoencoder_robosuite-epoch=1369-valid_loss=0.000658.ckpt"
 
-#    _target_: modeling.autoencoder.cnn.autoencoder.Cnn
-#    encoder:
-#      _target_: modeling.autoencoder.cnn.CnnEncoder
-#      num_channels: [ 32, 64, 128, 128 ]
-#      kernel_sizes: [ 3, 3, 3, 3 ]
-#      strides: [ 2, 2, 2, 2 ]
-#    decoder:
-#      _target_: modeling.autoencoder.cnn.CnnDecoder
-#      _partial_: True
-#      image_size: ${...env.image_size}
-#      num_channels: [ 128, 128, 64, 32 ]
-#      kernel_sizes: [ 3, 3, 3, 3 ]
-#      strides: [ 2, 2, 2, 2 ]
+  #  _target_: modeling.autoencoder.cnn.autoencoder.Cnn
+  #  encoder:
+  #    _target_: modeling.autoencoder.cnn.CnnEncoder
+  #    num_channels: [ 32, 64, 128, 128 ]
+  #    kernel_sizes: [ 3, 3, 3, 3 ]
+  #    strides: [ 2, 2, 2, 2 ]
+  #  decoder:
+  #    _target_: modeling.autoencoder.cnn.CnnDecoder
+  #    _partial_: True
+  #    image_size: ${...env.image_size}
+  #    num_channels: [ 128, 128, 64, 32 ]
+  #    kernel_sizes: [ 3, 3, 3, 3 ]
+  #    strides: [ 2, 2, 2, 2 ]
 
 
   dynamics_predictor:

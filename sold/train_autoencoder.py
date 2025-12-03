@@ -58,7 +58,7 @@ def load_autoencoder(checkpoint_path: str):
     return autoencoder_module.autoencoder
 
 
-@hydra.main(config_path="../configs", config_name="train_autoencoder", version_base=None)
+@hydra.main(config_path="../configs", config_name="train_autoencoder_robosuite", version_base=None)
 def train(cfg: DictConfig):
     set_seed(cfg.seed)
     trainer = instantiate_trainer(cfg)

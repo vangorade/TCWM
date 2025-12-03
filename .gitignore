@@ -172,4 +172,6 @@ cython_debug/
 
 # Ignore experiments and local configurations.
 /experiments
+/assets
+/checkpoints
 /configs/local/default.yaml

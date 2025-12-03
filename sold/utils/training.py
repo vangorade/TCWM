@@ -54,6 +54,8 @@ class OnlineProgressBar(RichProgressBar):
 
     def on_train_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         self.pl_module = pl_module
+        # Call parent's on_train_start to properly initialize the progress bar
+        super().on_train_start(trainer, pl_module)
 
     def _get_train_description(self, current_epoch: int) -> str:
         train_description = f"Steps {self.pl_module.num_steps}, Episodes {max(self.pl_module.num_episodes, 0)}"
@@ -64,11 +66,13 @@ class OnlineProgressBar(RichProgressBar):
 
     def _update(self, progress_bar_id: Optional["TaskID"], current: int, visible: bool = True) -> None:
         if self.is_enabled and self.progress is None:
+            # Initialize progress bar if not already done
             super().on_train_start(self.trainer, self.pl_module)
-            self.train_progress_bar_id = self._add_task(self.total_train_batches,
-                                                        self._get_train_description(self.trainer.current_epoch))
-            progress_bar_id = self.train_progress_bar_id
-        if self.progress is not None and self.is_enabled:
+        if self.is_enabled and self.progress is not None:
+            if not hasattr(self, 'train_progress_bar_id') or self.train_progress_bar_id is None:
+                self.train_progress_bar_id = self._add_task(self.total_train_batches,
+                                                            self._get_train_description(self.trainer.current_epoch))
+                progress_bar_id = self.train_progress_bar_id
             self.progress.update(progress_bar_id, completed=self.pl_module.num_steps, visible=visible, description=self._get_train_description(self.trainer.current_epoch))
             self.refresh()
 

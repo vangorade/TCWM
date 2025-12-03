@@ -103,8 +103,16 @@ class ExtendedTensorBoardLogger(TensorBoardLogger):
         if video.dtype != torch.uint8:
             video = (video * 255).to(torch.uint8)
 
-        self.experiment.add_video(name, np.expand_dims(video.cpu().numpy(), 0), global_step=step)
+        # Check if video is in (T, C, H, W) or (T, H, W, C) format
+        if video.shape[1] == 3 or video.shape[1] == 1:  # (T, C, H, W) format
+            video_for_tensorboard = video
+            video_for_file = video.permute(0, 2, 3, 1)  # Convert to (T, H, W, C)
+        else:  # Already in (T, H, W, C) format
+            video_for_tensorboard = video.permute(0, 3, 1, 2)  # Convert to (T, C, H, W) for tensorboard
+            video_for_file = video
+
+        self.experiment.add_video(name, np.expand_dims(video_for_tensorboard.cpu().numpy(), 0), global_step=step)
         name = name.replace("/", "_")  # Turn tensorboard grouping into valid file name.
-        write_video(os.path.join(self.save_dirs["videos"], name) + f"-step={step}.mp4", video.permute(0, 2, 3, 1), fps)
+        write_video(os.path.join(self.save_dirs["videos"], name) + f"-step={step}.mp4", video_for_file, fps)
 
 

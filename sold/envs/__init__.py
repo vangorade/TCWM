@@ -21,6 +21,12 @@ def make_env(suite: str, name: str, image_size: Tuple[int, int], max_episode_ste
         from envs.wrappers.to_tensordict import ToTensorDict
         env = make_survival_env(name, image_size, max_episode_steps, action_repeat, seed)
         env = ToTensorDict(env)
+    elif suite == 'metaworld':
+        from envs.from_metaworld import make_env as make_metaworld_env
+        env = make_metaworld_env(name, image_size, max_episode_steps, action_repeat, seed)
+    elif suite == 'robosuite':
+        from envs.from_robosuite import make_env as make_robosuite_env
+        env = make_robosuite_env(name, image_size, max_episode_steps, action_repeat, seed)
     else:
         raise ValueError(f"Unsupported environment suite: {suite}")
     env = ToTensor(env)

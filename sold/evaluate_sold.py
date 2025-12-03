@@ -52,7 +52,7 @@ def evaluate(cfg: DictConfig):
 
     for checkpoint in tqdm(checkpoint_files, disable=len(checkpoint_files) == 1, desc="Evaluating checkpoints"):
         env = hydra.utils.instantiate(cfg.env)
-        sold = SOLDModule.load_from_checkpoint(checkpoint, env=env)
+        sold = SOLDModule.load_from_checkpoint(checkpoint, env=env, strict=False)
 
         # Log behavior videos.
         videos_dir = os.path.join(output_dir, "videos")

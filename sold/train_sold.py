@@ -7,6 +7,7 @@ import hydra
 from lightning.pytorch.utilities.types import OptimizerLRScheduler, STEP_OUTPUT
 from modeling.distributions import Moments
 from modeling.autoencoder.base import Autoencoder
+from modeling.losses import SlotContrastiveLoss
 import numpy as np
 from omegaconf import DictConfig
 import torch
@@ -19,6 +20,10 @@ from utils.module import FreezeParameters
 from utils.training import set_seed, print_summary, OnlineModule
 from utils.visualizations import  visualize_reward_prediction, visualize_output_attention, visualize_reward_predictor_attention, get_attention_weights
 
+torch.set_float32_matmul_precision('high')
+torch.backends.cudnn.benchmark = True
+
+os.environ["MUJOCO_GL"] = "egl"
 
 class SOLDModule(OnlineModule):
     def __init__(self, autoencoder: Autoencoder, dynamics_predictor, actor, critic, reward_predictor,
@@ -28,9 +33,12 @@ class SOLDModule(OnlineModule):
                  finetune_autoencoder: bool, autoencoder_learning_rate: float, autoencoder_grad_clip: float,
                  num_context: int | Tuple[int, int], imagination_horizon: int, start_imagination_from_every: bool,
                  actor_entropy_loss_weight: float, actor_gradients: str, return_lambda: float, discount_factor: float,
-                 critic_ema_decay: float, env: gym.Env, max_steps: int, num_seed: int, update_freq: int,
-                 num_updates: int, eval_freq: int, num_eval_episodes: int, batch_size: int, buffer_capacity: int,
-                 save_replay_buffer: bool) -> None:
+                 critic_ema_decay: float, slot_contrastive_weight: float = 0.0, slot_contrastive_temperature: float = 0.1,
+                 slot_contrastive_batch_contrast: bool = True, slot_contrastive_action_conditioned: bool = False,
+                 backward_consistency_weight: float = 0.0,
+                 env: gym.Env = None, max_steps: int = None, num_seed: int = None, update_freq: int = None,
+                 num_updates: int = None, eval_freq: int = None, num_eval_episodes: int = None, batch_size: int = None, buffer_capacity: int = None,
+                 save_replay_buffer: bool = True) -> None:
 
         self.min_num_context, self.max_num_context = (num_context, num_context) if isinstance(num_context, int) else num_context
         if self.min_num_context > self.max_num_context:
@@ -50,6 +58,10 @@ class SOLDModule(OnlineModule):
         self.critic_target = copy.deepcopy(self.critic)
         self.reward_predictor = reward_predictor(**regression_infos)
         self.dynamics_predictor = dynamics_predictor(
+                num_slots=autoencoder.num_slots, slot_dim=autoencoder.slot_dim, sequence_length=imagination_horizon,
+                action_dim=env.action_space.shape[0], input_buffer_size=sequence_length)
+        # Backward dynamics predictor (reverse-time consistency)
+        self.backward_dynamics_predictor = dynamics_predictor(
                 num_slots=autoencoder.num_slots, slot_dim=autoencoder.slot_dim, sequence_length=imagination_horizon,
                 action_dim=env.action_space.shape[0], input_buffer_size=sequence_length)
 
@@ -72,15 +84,27 @@ class SOLDModule(OnlineModule):
         self.return_lambda = return_lambda
         self.discount_factor = discount_factor
         self.critic_ema_decay = critic_ema_decay
+        self.backward_consistency_weight = backward_consistency_weight
 
         self.return_moments = Moments()
         self.register_buffer("discounts", torch.full((1, self.imagination_horizon), self.discount_factor))
         self.discounts = torch.cumprod(self.discounts, dim=1) / self.discount_factor
 
+        # Slot contrastive loss for temporal consistency
+        self.slot_contrastive_weight = slot_contrastive_weight
+        self.slot_contrastive_loss = SlotContrastiveLoss(
+            temperature=slot_contrastive_temperature,
+            batch_contrast=slot_contrastive_batch_contrast,
+            action_conditioned=slot_contrastive_action_conditioned,
+            slot_dim=autoencoder.slot_dim if slot_contrastive_action_conditioned else None,
+            action_dim=env.action_space.shape[0] if slot_contrastive_action_conditioned else None
+        )
+
         self.current_losses = defaultdict(list)
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
-        return [torch.optim.Adam(self.dynamics_predictor.parameters(), lr=self.dynamics_learning_rate),
+        dyn_params = list(self.dynamics_predictor.parameters()) + list(self.backward_dynamics_predictor.parameters())
+        return [torch.optim.Adam(dyn_params, lr=self.dynamics_learning_rate),
                 torch.optim.Adam(self.reward_predictor.parameters(), lr=self.reward_learning_rate),
                 torch.optim.Adam(self.actor.parameters(), lr=self.actor_learning_rate),
                 torch.optim.Adam(self.critic.parameters(), lr=self.critic_learning_rate)]
@@ -88,6 +112,10 @@ class SOLDModule(OnlineModule):
     def training_step(self, batch, batch_index: int) -> STEP_OUTPUT:
         dynamics_optimizer, reward_optimizer, actor_optimizer, critic_optimizer = self.optimizers()
         images, actions, rewards = batch["obs"].squeeze(0) / 255., batch["action"].squeeze(0), batch["reward"].squeeze(0)
+        
+        # Convert images from (B, T, H, W, C) to (B, T, C, H, W) if needed
+        if images.shape[-1] == 3:  # If channels are last
+            images = images.permute(0, 1, 4, 2, 3)  # (B, T, H, W, C) -> (B, T, C, H, W)
 
         if self.finetune_autoencoder:
             self.autoencoder_optimizer.zero_grad()
@@ -143,7 +171,7 @@ class SOLDModule(OnlineModule):
         # Log all losses.
         for key, value in outputs.items():
             if key.endswith("_loss"):
-                self.log("train/" + key, value)
+                self.log("train/" + key, value, on_step=True, prog_bar=False, logger=True)
         self.log_gradients(model_names=("reward_predictor", "actor", "critic"))
         return outputs
 
@@ -157,6 +185,24 @@ class SOLDModule(OnlineModule):
         future_outputs = self.autoencoder.decode(future_slots)
         slot_loss = F.mse_loss(future_slots, slots[:, num_context:num_context + self.imagination_horizon])
         image_loss = F.mse_loss(future_outputs["reconstructions"], images[:, num_context:num_context + self.imagination_horizon])
+        
+        # Compute slot contrastive loss for temporal consistency
+        if self.slot_contrastive_weight > 0:
+            # Pass actions if action-conditioned (actions are shifted by 1 for causality)
+            slot_contrastive_loss = self.slot_contrastive_loss(slots, actions[:, 1:])
+        else:
+            slot_contrastive_loss = torch.tensor(0.0, device=slots.device)
+
+        # Backward consistency: predict previous slots from future sequence (reverse-time)
+        if self.backward_consistency_weight > 0:
+            slots_rev = torch.flip(slots, dims=[1])
+            actions_rev = torch.flip(actions[:, 1:], dims=[1])
+            bwd_pred_rev = self.backward_dynamics_predictor.predict_slots(
+                slots_rev, actions_rev.clone().detach(), steps=self.imagination_horizon, num_context=num_context)
+            # Align with reversed ground-truth segment
+            bwd_slot_loss = F.mse_loss(bwd_pred_rev, slots_rev[:, num_context:num_context + self.imagination_horizon])
+        else:
+            bwd_slot_loss = torch.tensor(0.0, device=slots.device)
 
         if self.after_eval:
             x_ticks = [f'T={0}']
@@ -174,7 +220,21 @@ class SOLDModule(OnlineModule):
                 [context_image, torch.ones(3, context_image.size(1), 2), future_image], dim=2)
             self.log("dynamics_prediction", dynamics_image)
 
-        return {"slot_loss": slot_loss, "image_loss": image_loss, "dynamics_loss": slot_loss + image_loss}
+        # Combine all dynamics losses
+        total_dynamics_loss = (
+            slot_loss
+            + image_loss
+            + self.slot_contrastive_weight * slot_contrastive_loss
+            + self.backward_consistency_weight * bwd_slot_loss
+        )
+        
+        return {
+            "slot_loss": slot_loss,
+            "image_loss": image_loss,
+            "slot_contrastive_loss": slot_contrastive_loss,
+            "backward_slot_loss": bwd_slot_loss,
+            "dynamics_loss": total_dynamics_loss
+        }
 
     def compute_reward_loss(self, images: torch.Tensor, reconstructions: torch.Tensor, slots: torch.Tensor, rewards: torch.Tensor) -> Dict[str, Any]:
         is_firsts = torch.isnan(rewards)  # We add NaN as a reward on the first time-step.
@@ -303,8 +363,12 @@ class SOLDModule(OnlineModule):
         ret = torch.cat(list(reversed(vals)), dim=1)[:, :-1]
         return ret
 
-    def select_action(self, observation: torch.Tensor, is_first: bool = False, mode: str = "train") -> torch.Tensor:
-        observation = observation.unsqueeze(0) / 255.  # Expand batch dimension (1, 3, height, width).
+    def select_action(self, observation, is_first=False, mode="train"):
+        # Ensure observation is in (C, H, W) format
+        if observation.shape[-1] == 3:  # If channels are last (H, W, C)
+            observation = observation.permute(2, 0, 1)  # Convert to (C, H, W)
+        
+        observation = observation.unsqueeze(0) / 255.  # Expand batch dimension (1, C, H, W).
 
         # Encode image into slots and append to context.
         last_slots = None if is_first else self._slot_history[:, -1]
@@ -326,7 +390,7 @@ class SOLDModule(OnlineModule):
         return selected_action.clamp_(self.env.action_space.low[0], self.env.action_space.high[0]).detach()
 
 
-@hydra.main(config_path="../configs", config_name="train_sold", version_base=None)
+@hydra.main(config_path="../configs", config_name="train_sold_robosuite", version_base=None)
 def train(cfg: DictConfig):
     if cfg.logger.log_to_wandb:
         import wandb

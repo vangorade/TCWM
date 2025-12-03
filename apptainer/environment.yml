@@ -12,12 +12,16 @@ dependencies:
     - cython<3
     - git+https://github.com/EwertzJN/fetch-block-construction.git@master#egg=fetch_block_construction
     - gym<=0.17.3
+    - gymnasium>=0.29.0  # For MetaWorld integration
+    - h5py  # Required for Robosuite
     - hydra-core
     - lightning
     - lightning-bolts
     - matplotlib
+    - metaworld  # MetaWorld benchmark suite
     - moviepy<2
     - mujoco-py
+    - robosuite  # Robosuite manipulation benchmark
     - git+https://github.com/maltemosbach/multi-object-fetch@master#egg=multi_object_fetch
     - numpy==1.24.3
     - opencv-python
