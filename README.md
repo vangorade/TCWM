@@ -88,26 +88,3 @@ Each checkpoint also includes corresponding TensorBoard logs, allowing you to vi
 ```bash
 tensorboard --logdir checkpoints
 ```
-
-
-## Citation
-This work introduces TCWM, building upon slot-attention based world models. The paper is currently under review at ICLR 2026. If you find this work useful, please consider citing:
-
-```bibtex
-@inproceedings{tcwm2026,
-  title={TCWM: Temporally Consistent Object-Centric World Models},
-  author={Anonymous Authors},
-  booktitle={International Conference on Learning Representations (ICLR)},
-  year={2026}
-}
-```
-
-This work also builds upon foundational slot-attention and object-centric learning:
-```bibtex
-@inproceedings{sold2025mosbach,
-  title={SOLD: Slot Object-Centric Latent Dynamics Models for Relational Manipulation Learning from Pixels},
-  author={Malte Mosbach and Jan Niklas Ewertz and Angel Villar-Corrales and Sven Behnke},
-  booktitle={International Conference on Machine Learning (ICML)},
-  year={2025}
-}
-```
